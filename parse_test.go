@@ -1977,3 +1977,67 @@ func TestNonCompactShortFlagNotTreatedAsCompact(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestCompactShortFlagUnicode(t *testing.T) {
+	var args struct {
+		Han int    `arg:"-汉,compact"`
+		Str string `arg:"-α,compact"`
+	}
+	err := parse("-汉10 -α你好", &args)
+	require.NoError(t, err)
+	assert.Equal(t, 10, args.Han)
+	assert.Equal(t, "你好", args.Str)
+
+	// Separated and equals forms also work with unicode short flags
+	var argsSep struct {
+		Han int `arg:"-汉,compact"`
+	}
+	err = parse("-汉 42", &argsSep)
+	require.NoError(t, err)
+	assert.Equal(t, 42, argsSep.Han)
+
+	var argsEq struct {
+		Han int `arg:"-汉,compact"`
+	}
+	err = parse("-汉=99", &argsEq)
+	require.NoError(t, err)
+	assert.Equal(t, 99, argsEq.Han)
+
+	// Non-compact unicode short flag must not be treated as compact
+	var argsNonCompact struct {
+		Han int `arg:"-汉"`
+	}
+	err = parse("-汉10", &argsNonCompact)
+	assert.Error(t, err)
+
+	// Multi-rune short flag definition must still fail validation
+	var argsTooLong struct {
+		Han int `arg:"-汉a,compact"`
+	}
+	_, err = NewParser(Config{}, &argsTooLong)
+	assert.Error(t, err)
+}
+
+func TestCompactShortFlagLongOptionPrecedence(t *testing.T) {
+	var args struct {
+		S         string `arg:"-s,compact"`
+		Something string
+		Pos       string `arg:"positional"`
+	}
+	err := parse("-something somevalue", &args)
+	require.NoError(t, err)
+	assert.Equal(t, "", args.S)
+	assert.Equal(t, "somevalue", args.Something)
+	assert.Equal(t, "", args.Pos)
+
+	// When no long option matches, compact short flag still applies
+	var argsCompact struct {
+		S         string `arg:"-s,compact"`
+		Something string
+	}
+	err = parse("-sother", &argsCompact)
+	require.NoError(t, err)
+	assert.Equal(t, "other", argsCompact.S)
+	assert.Equal(t, "", argsCompact.Something)
+}
+
+

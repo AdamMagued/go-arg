@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"unicode/utf8"
 
 	scalar "github.com/alexflint/go-scalar"
 )
@@ -391,7 +392,7 @@ func cmdFromStruct(name string, dest path, t reflect.Type, envPrefix string, def
 			case strings.HasPrefix(key, "--"):
 				spec.long = key[2:]
 			case strings.HasPrefix(key, "-"):
-				if len(key) > 2 {
+				if utf8.RuneCountInString(key) > 2 {
 					errs = append(errs, fmt.Sprintf("%s.%s: short arguments must be one character only",
 						t.Name(), field.Name))
 					return false
@@ -743,21 +744,29 @@ func (p *Parser) process(args []string) error {
 			opt = opt[:pos]
 		}
 
-		// check for compact short flag syntax, e.g. -c10
-		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && len(arg) > 2 && !strings.Contains(arg, "=") {
-			shortChar := string(arg[1])
-			for _, s := range specs {
-				if s.short == shortChar && s.compact {
-					opt = shortChar
-					value = arg[2:]
-					break
+		// lookup the spec for this option (note that the "specs" slice changes as
+		// we expand subcommands so it is better not to use a map)
+		var spec *spec
+		if opt != "" {
+			spec = findOption(specs, opt)
+		}
+
+		// if no exact match was found, check for compact short flag syntax, e.g. -c10 or -汉10
+		if spec == nil && strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && !strings.Contains(arg, "=") {
+			r, size := utf8.DecodeRuneInString(arg[1:])
+			if r != utf8.RuneError && size > 0 && len(arg) > 1+size {
+				shortChar := string(r)
+				for _, s := range specs {
+					if s.short == shortChar && s.compact {
+						spec = s
+						opt = shortChar
+						value = arg[1+size:]
+						break
+					}
 				}
 			}
 		}
 
-		// lookup the spec for this option (note that the "specs" slice changes as
-		// we expand subcommands so it is better not to use a map)
-		spec := findOption(specs, opt)
 		if spec == nil || opt == "" {
 			return fmt.Errorf("unknown argument %s", arg)
 		}
